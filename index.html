@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secret Message Lock</title>
+  <style>
+    /* Same attractive dating style as before */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #ff7c7c, #ff4b5c);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: white;
+    }
+    #app {
+      width: 100%;
+      max-width: 450px;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 15px;
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #ff3e56;
+      margin-bottom: 1.5rem;
+    }
+    textarea, input {
+      width: 100%;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    button {
+      width: 100%;
+      padding: 1rem;
+      background-color: #ff3e56;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover { background-color: #ff2a3d; }
+    .hidden { display: none; }
+    .link-box {
+      font-size: 1rem;
+      color: #555;
+      background-color: #ffecf0;
+      padding: 0.5rem;
+      border-radius: 10px;
+      text-align: center;
+      margin-top: 1rem;
+      word-break: break-word;
+    }
+    .message-card {
+      background-color: #f8f8f8;
+      padding: 1.5rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      margin-top: 2rem;
+    }
+    .message-card p {
+      font-size: 1.25rem;
+      color: #333;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Secret Message Lock</h1>
+
+    <!-- Message Creation Form -->
+    <div id="message-form">
+      <textarea id="message" placeholder="Write your secret message here..." rows="5"></textarea>
+      <input type="password" id="password" placeholder="Set a password" />
+      <button id="create-message" disabled>Create Secret Message</button>
+    </div>
+
+    <!-- Password Entry for Unlock -->
+    <div id="password-form" class="hidden">
+      <input type="password" id="unlock-password" placeholder="Enter password to unlock" />
+      <button id="unlock-message">Unlock Message</button>
+    </div>
+
+    <!-- Shareable link -->
+    <div id="link-box" class="link-box hidden"></div>
+
+    <!-- Message Display After Unlock -->
+    <div id="message-display" class="message-card hidden">
+      <p id="secret-message"></p>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script>
+    // === Configure your Supabase here ===
+    const SUPABASE_URL = 'https://fqoabqhtncouljvlhbsn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxb2FicWh0bmNvdWxqdmxoYnNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU2ODU2NjUsImV4cCI6MjA2MTI2MTY2NX0.zPRfoleQRwpogOmAV86q4LTKgYW3_-ot64Mhgatw05E';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // DOM Elements
+    const createBtn = document.getElementById('create-message');
+    const messageInput = document.getElementById('message');
+    const passwordInput = document.getElementById('password');
+    const unlockBtn = document.getElementById('unlock-message');
+    const unlockPasswordInput = document.getElementById('unlock-password');
+
+    // Enable Create Button only when inputs are filled
+    messageInput.addEventListener('input', toggleCreateButton);
+    passwordInput.addEventListener('input', toggleCreateButton);
+
+    function toggleCreateButton() {
+      createBtn.disabled = !messageInput.value || !passwordInput.value;
+    }
+
+    // Create a secret message
+    createBtn.addEventListener('click', async () => {
+      const message = messageInput.value.trim();
+      const password = passwordInput.value.trim();
+
+      if (!message || !password) return;
+
+      const encryptedMessage = CryptoJS.AES.encrypt(message, password).toString();
+      const messageId = Math.random().toString(36).substring(2, 10);
+
+      const { data, error } = await supabase.from('messages').insert([
+        { id: messageId, encrypted_message: encryptedMessage }
+      ]);
+
+      if (error) {
+        alert('Error saving message!');
+        console.error(error);
+      } else {
+        const link = `${window.location.origin}${window.location.pathname}?id=${messageId}`;
+        const linkBox = document.getElementById('link-box');
+        linkBox.textContent = `Share this link with the password: ${link}`;
+        linkBox.classList.remove('hidden');
+        document.getElementById('message-form').reset();
+        createBtn.disabled = true;
+      }
+    });
+
+    // Unlock the message
+    unlockBtn.addEventListener('click', async () => {
+      const password = unlockPasswordInput.value.trim();
+      const urlParams = new URLSearchParams(window.location.search);
+      const messageId = urlParams.get('id');
+
+      if (!messageId || !password) return;
+
+      const { data, error } = await supabase.from('messages').select('encrypted_message').eq('id', messageId).single();
+
+      if (error || !data) {
+        alert('Message not found!');
+        console.error(error);
+        return;
+      }
+
+      const encryptedMessage = data.encrypted_message;
+      const decryptedBytes = CryptoJS.AES.decrypt(encryptedMessage, password);
+      const decryptedMessage = decryptedBytes.toString(CryptoJS.enc.Utf8);
+
+      if (!decryptedMessage) {
+        alert('Incorrect password!');
+        return;
+      }
+
+      document.getElementById('secret-message').textContent = decryptedMessage;
+      document.getElementById('message-display').classList.remove('hidden');
+
+      // Optional: Auto delete message after reading (to make it "self-destruct")
+      await supabase.from('messages').delete().eq('id', messageId);
+    });
+
+    // Show password form if URL has ?id=
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('id')) {
+      document.getElementById('password-form').classList.remove('hidden');
+      document.getElementById('message-form').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
